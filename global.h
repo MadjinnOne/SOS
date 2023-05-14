@@ -1,8 +1,6 @@
 #pragma once
 
 #include "objet.h"
-//#include "animal.h"
-
 #ifdef __linux__
     #include <GL/glut.h>
 #elif _WIN32
@@ -29,5 +27,5 @@
 
 // État du jeu
 enum GameState {
-    PLAYING, WIN, LOSE, TITLE
+    PLAYING, WIN, LOSE, TITLE, INIT, LEADERBOARD, COMMANDS,
 };

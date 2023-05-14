@@ -1,4 +1,6 @@
 #include "taniere.h"
+#include "global.h"
+#include "textures.h"
 
 void initialiserTaniere(ptrTaniere taniere)
 {
@@ -9,10 +11,11 @@ void initialiserTaniere(ptrTaniere taniere)
     taniere->objet.r = TANIERE_COLOR_R;
     taniere->objet.g = TANIERE_COLOR_G;
     taniere->objet.b = TANIERE_COLOR_B;
+    taniere->objet.texture = chargerTexture("Textures/taniere.png");  // Charger la texture
 }
 
-void dessinerTaniere(ptrTaniere taniere)
+void dessinerTaniere(ptrTaniere taniere) // UPDATE
 {
-    // Dessin de la taniere
-    dessinerObjet(&taniere->objet);
+    dessinerObjetTexture(&taniere->objet);
 }
+

@@ -1,4 +1,6 @@
 #include "ruisseau.h"
+#include "global.h"
+#include "textures.h"
 
 void initialiserRuisseau(ptrRuisseau ruisseau)
 {
@@ -9,10 +11,11 @@ void initialiserRuisseau(ptrRuisseau ruisseau)
     ruisseau->objet.r = RIVER_COLOR_R;
     ruisseau->objet.g = RIVER_COLOR_G;
     ruisseau->objet.b = RIVER_COLOR_B;
+    ruisseau->objet.texture = chargerTexture("Textures/ruisseau.png");  // Charger la texture
 }
 
-void dessinerRuisseau(ptrRuisseau ruisseau)
+void dessinerRuisseau(ptrRuisseau ruisseau) // UPDATE
 {
-    // Dessin du ruisseau
-    dessinerObjet(&ruisseau->objet);
+    dessinerObjetTexture(&ruisseau->objet);
 }
+

@@ -1,4 +1,6 @@
 #include "route.h"
+#include "global.h"
+#include "textures.h"
 
 void initialiserRoute(ptrRoute route)
 {
@@ -9,10 +11,10 @@ void initialiserRoute(ptrRoute route)
     route->objet.r = ROAD_COLOR_R;
     route->objet.g = ROAD_COLOR_G;
     route->objet.b = ROAD_COLOR_B;
+    route->objet.texture = chargerTexture("Textures/road.png");  // Charger la texture    
 }
 
-void dessinerRoute(ptrRoute route)
-{
-    // Dessin de la route
-    dessinerObjet(&route->objet);
+void dessinerRoute(ptrRoute Route) { // NEED UPDATE
+    dessinerObjetTexture(&Route->objet);
 }
+

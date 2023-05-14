@@ -3,15 +3,20 @@
 #include <stdbool.h>
 #include <time.h>
 #include <string.h>
+#include <FreeImage.h>
 #include "animal.h"
 #include "voiture.h"
 #include "route.h"
 #include "ruisseau.h"
 #include "bordure.h"
 #include "global.h"
-#include "clavier.h"
 #include "taniere.h"
 #include "ecran.h"
+#include "rondin.h"
+#include "leaderboard.h"
+#include "tir.h"
+#include "bouton.h"
+#include "textures.h"
 
 
 
@@ -30,22 +35,26 @@
 #define TEMPS_RONDIN 50
 #define TEMPS_ATTENTE_DEBUT 1000
 
-#define NB_VOITURE_MAX 15 
-#define NB_BANDES 10
-
 // Définition de variables globales
 int score = 0;
+char nomJoueur[MAX_NAME_LENGTH] = "";
+GLuint textureFondEcranTitre;
+GLuint textureFondEcranScore;
+GLuint textureFondEcranCommand;
+
 // Les objets
 Route ObjetRoute;
 Ruisseau ObjetRuisseau;
 Animal ObjetAnimal;
 Bordure ObjetBordure_01;
 Bordure ObjetBordure_02;
-Voiture TableVoitures[NB_VOITURE_MAX] = {0};
+Rondin TableRondin[NB_RONDIN_MAX] = {0};
 Taniere ObjetTaniere;
 Ecran ecranTitre, ecranFinDeJeu;
 // Les ENUMS
 enum GameState gameState = TITLE; 
+Liste liste_autos;
+Liste liste_tirs;
 
 
 
@@ -53,30 +62,30 @@ enum GameState gameState = TITLE;
 // Définition des fonctions
 void initialiser();
 void afficherScene();
-void afficherTextes(int score, int vie);
+void afficherScore_Vie(int score, int vie);
 void afficherTexte(char *chaine, int x, int y);
-void verifierCollision(ptrAnimal animal, Voiture voiture[], size_t nombre_voitures);
+bool verifierCollisionVoiture(ptrAnimal animal, ptrRoute route, ptrListe pliste_autos);
 void verifierEntreeTaniere(ptrAnimal animal, ptrTaniere taniere);
+bool verifierTomberdanseau(ptrAnimal animal, ptrRuisseau ruisseau, Rondin rondin[]);
 void afficherEcranFinDeJeu(ptrEcran ecran, int score);
-void gererClicSouris(int button, int state, int x, int y);
-
+void mouseClick(int button, int state, int x, int y);
+void obtenirNomJoueur(char *nomJoueur);
+void afficherChampTexte();
+void gererSaisieNom(unsigned char key, int x, int y);
 void timer(int valeur);
 void initRendering();
-void handleKeypress(unsigned char key, //The key that was pressed
-                    int x, int y);
+void handleKeypress(unsigned char key, int x, int y);
 void handleResize(int w, int h);
 
 // Fonction principale
 int main(int argc, char **argv) {
+    // Initialisation de FreeImage
+    FreeImage_Initialise(FALSE); // s'il est défini à TRUE, charge uniquement les plugins locaux. Si vous voulez charger tous les plugins disponibles, vous pouvez le passer à FALSE
     // // Initialisation de GLUT
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(LARGEUR_FENETRE, HAUTEUR_FENETRE);
-    glutCreateWindow("Frogger");
-    /// "initRendering" est une fonction qui peut être utilisée pour initialiser certaines fonctionnalités de rendu OpenGL 
-    /// et d'autres paramètres tels que la couleur d'effacement de l'écran, la profondeur, l'éclairage et la texture.
-    //initRendering(); //Initialize rendering
-    
+    glutCreateWindow("SOS");    
     // Initialisation des variables et des fonctions de rappel
     initialiser();
 
@@ -94,7 +103,7 @@ int main(int argc, char **argv) {
     /// souris au moment de la pression de la touche.
     glutKeyboardFunc(handleKeypress);
 
-    glutMouseFunc(gererClicSouris);
+    glutMouseFunc(mouseClick);
 
     /// La fonction glutReshapeFunc est une fonction de la bibliothèque GLUT (OpenGL Utility Toolkit) 
     /// qui permet de spécifier la fonction à appeler lorsque la fenêtre est redimensionnée. 
@@ -116,6 +125,8 @@ int main(int argc, char **argv) {
     /// ce qui signifie que le programme ne peut être arrêté qu'en fermant la fenêtre de l'application ou en utilisant un signal système 
     /// pour interrompre l'exécution du programme.
     glutMainLoop();
+    // Libération des ressources de FreeImage
+    FreeImage_DeInitialise();
     
     return 0;
 }
@@ -133,95 +144,31 @@ void initialiser() {
 
     initialiserBordure_haut(&ObjetBordure_01);
     initialiserBordure_bas(&ObjetBordure_02);
+    //Initialisation des textures
+    textureFondEcranTitre = chargerTexture("Textures/titre.png");
+    textureFondEcranScore = chargerTexture("Textures/score.png");
+    textureFondEcranCommand = chargerTexture("Textures/command.png");
     // Initialiser les véhicules
-    // La vitesse et la direction par bande doit être identique
-    // Idealement recréer cela en fonction
-    {
-        enum Direction dir[NB_BANDES];
-        int vitesse[NB_BANDES];
-        for (int j = 0; j < NB_BANDES; j++)
-        {
-            dir[j] = (rand()%2)?RIGHT:LEFT;
-            vitesse[j] = rand() % (VITESSE_MAX - VITESSE_MIN + 1) + VITESSE_MIN;
-        }
-        for (int i = 0 ; i < (int)(sizeof(TableVoitures)/sizeof(Voiture)); i++)
-        {
-            int bande = rand()%NB_BANDES;
-            int position_x = LARGEUR_FENETRE * i/ NB_VOITURE_MAX;
-            initialiserVoiture(&TableVoitures[i], position_x, 320 + bande*20, dir[bande], vitesse[bande]);
-        }
-    }
-
+    initialiserListeVoiture(&liste_autos);
+    //initialiserListeTir(&liste_tirs);
+    initialiserListeRondins(TableRondin);
     initialiserAnimal(&ObjetAnimal);
-    // positionGrenouilleX = (LARGEUR_ROUTE - LARGEUR_GRENOUILLE) / 2.0; // Initialisation de la position de la grenouille
-    // positionGrenouilleY = HAUTEUR_ROUTE + HAUTEUR_RUISSEAU + HAUTEUR_BANDEAU + (HAUTEUR_CASE - HAUTEUR_GRENOUILLE) / 2.0;
-    // directionGrenouille = AUCUNE; // Initialisation de la direction de la grenouille
-    // etatAnimation = 0; // Initialisation de l'état de l'animation
-    // score = 0; // Initialisation du score
-    // vie = 3; // Initialisation du nombre de vies
-    // etatVictoire = 0; // Initialisation de l'état de la victoire
-    // tempsRestant = TEMPS_TOTAL; // Initialisation du temps restant
-    // etatDebut = 1; // Initialisation de l'état du début du jeu
 }
 
 
-/*
+
+// Fonction de dessin de la scène
 void afficherScene() {
     // Effacement de la scène
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Réinitialiser la matrice de projection
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluOrtho2D(0, LARGEUR_FENETRE, 0, HAUTEUR_FENETRE);
-
     // Réinitialiser la matrice de modèle-vue
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
-    
-    dessinerRoute(&ObjetRoute);
-    
-    dessinerRuisseau(&ObjetRuisseau);
-    dessinerTaniere(&ObjetTaniere);
-
-    dessinerBordure(&ObjetBordure_01);
-    dessinerBordure(&ObjetBordure_02);
-
-    for (int i = 0; i < (int) (sizeof(TableVoitures)/sizeof(Voiture)); i++)
-    {
-        dessinerVoiture(&TableVoitures[i]);
-    }
-
-    // Dessin de l'animal
-    dessinerAnimal(&ObjetAnimal);
-
-    
-    // Affichage du score
-    afficherTextes(ObjetAnimal.score, ObjetAnimal.vie);
-
-    if (gameState == LOSE){
-        afficherEcranFinDeJeu(&ecranFinDeJeu, ObjetAnimal.score);
-    }
-  
-//     // Affichage du temps restant
-//     char tempsRestantString[50];
-//     sprintf(tempsRestantString, "Temps restant : %d", tempsRestant);
-//     glColor3f(1.0, 1.0, 1.0);
-//     dessinerTexte(tempsRestantString, 10, HAUTEUR_ROUTE + HAUTEUR_RUISSEAU + 30, 1.0);
-    
-    // Echange des buffers
-    glutSwapBuffers();
-}
-*/
-// Fonction de dessin de la scène
-void afficherScene() {
-    // Effacement de la scène
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);   
-    
 
     switch (gameState) {
         case TITLE:
-            afficherEcranTitre(&ecranTitre);
+            afficherEcranTitre(&ecranTitre, &textureFondEcranTitre);
             break;
         case PLAYING:
             dessinerRoute(&ObjetRoute);
@@ -230,29 +177,40 @@ void afficherScene() {
             dessinerBordure(&ObjetBordure_01);
             dessinerBordure(&ObjetBordure_02);
 
-            for (int i = 0; i < (int) (sizeof(TableVoitures) / sizeof(Voiture)); i++) {
-                dessinerVoiture(&TableVoitures[i]);
+            ptrElement element = liste_autos.premier;
+            while(element != NULL)
+            {
+                dessinerVoiture((ptrVoiture)element->objetDefini);
+                element = element->suivant;
             }
 
+            for (int i = 0; i < (int) (sizeof(TableRondin) / sizeof(Rondin)); i++) {
+                dessinerRondin(&TableRondin[i]);
+            }
             // Dessin de l'animal
             dessinerAnimal(&ObjetAnimal);
 
             // Affichage du score
-            afficherTextes(ObjetAnimal.score, ObjetAnimal.vie);
+            afficherScore_Vie(ObjetAnimal.score, ObjetAnimal.vie);
             break;
         case LOSE:
             afficherEcranFinDeJeu(&ecranFinDeJeu, ObjetAnimal.score);
+            afficherChampTexte();
             break;
+        case COMMANDS:
+            afficherEcranCommandes(&textureFondEcranCommand);
+            break;
+        case LEADERBOARD:
+            afficherEcranLeaderboard(&textureFondEcranScore);
         default:
             break;
     }
-
     // Echange des buffers
     glutSwapBuffers();
 }
 
 
-void afficherTextes(int score, int vie)
+void afficherScore_Vie(int score, int vie)
 {
     {
         char scoreStr[50]; // Convertit le score en chaîne de caractères
@@ -264,13 +222,8 @@ void afficherTextes(int score, int vie)
         sprintf(vieStr, "Vies : %d", vie);
         afficherTexte(vieStr, 720, 580); // Affiche le score en haut à gauche de l'écran
     }
-    /*
-    if (ObjetAnimal.vie <= 0)
-    {
-        afficherTexte("Game over", 360, 290);
-    }
-    */
 }
+
 
 void afficherTexte(char *chaine, int x, int y) {
     glColor3f(1.0, 1.0, 1.0);
@@ -283,41 +236,85 @@ void afficherTexte(char *chaine, int x, int y) {
     }
 }
 
-void verifierCollision(ptrAnimal animal, Voiture voiture[], size_t nombre_voitures) {
+/*
+void afficherChampTexte() {
+    glColor3f(0.0f, 1.0f, 1.0f);
+    glRasterPos2i(250, 300);
+    for (int i = 0; i < strlen(nomJoueur); i++) {
+        glutBitmapCharacter(GLUT_BITMAP_9_BY_15, nomJoueur[i]);
+    }
+}
+*/
+
+void afficherChampTexte() {
+    // Définir la couleur en blanc
+    glColor3f(1.0f, 1.0f, 1.0f);
+
+    // Dessiner un rectangle blanc
+    int x = 300;
+    int y = 400;
+    int largeur = 200; // Suppose une largeur de 200 pixels pour le cadre
+    int hauteur = 20; // Suppose une hauteur de 20 pixels pour le cadre
+
+    glBegin(GL_QUADS);
+        glVertex2f(x, y);
+        glVertex2f(x + largeur, y);
+        glVertex2f(x + largeur, y + hauteur);
+        glVertex2f(x, y + hauteur);
+    glEnd();
+
+    // Définir la couleur en noir pour le texte
+    glColor3f(0.0f, 0.0f, 0.0f);
+
+    // Afficher le texte
+    glRasterPos2i(x + 10, y + 12); // Décale de 10 pixels à droite et en haut
+    for (int i = 0; i < strlen(nomJoueur); i++) {
+        glutBitmapCharacter(GLUT_BITMAP_9_BY_15, nomJoueur[i]);
+    }
+
+    // Afficher le texte "Veuillez entrer votre nom:" au-dessus du cadre
+    // Définir la couleur en blanc pour le texte
+    glColor3f(1.0f, 1.0f, 1.0f);
+
+    const char *message = "Veuillez entrer votre nom:";
+    glRasterPos2i(x, y + hauteur - 30); // Positionner le texte 30 pixels au-dessus du cadre
+    for (int i = 0; i < strlen(message); i++) {
+        glutBitmapCharacter(GLUT_BITMAP_9_BY_15, message[i]);
+    }
+}
+
+
+
+
+void gererSaisieNom(unsigned char key, int x, int y) {
+    if (key == 8 || key == 127) { // Touche Backspace ou Delete
+        if (strlen(nomJoueur) > 0) {
+            nomJoueur[strlen(nomJoueur) - 1] = '\0';
+        }
+    } else if (key == 13) { // Touche Entrée
+        ajouterEntreeLeaderboard("leaderboard.txt", nomJoueur, ObjetAnimal.score);
+        gameState = INIT;
+    } else if (strlen(nomJoueur) < MAX_NAME_LENGTH - 1) {
+        nomJoueur[strlen(nomJoueur) + 1] = '\0';
+        nomJoueur[strlen(nomJoueur)] = key;
+    }
+}
+
+bool verifierCollisionVoiture(ptrAnimal animal, ptrRoute route, ptrListe pliste_autos) {
     // Vérifier si l'animal est sur la route (on pourrait sans doute optimiser mais il faudrait s'assurer que les voiture ne peut être que sur la route également)
     //détection de collision avec la voiture
-    for (int i = 0; i < (int)nombre_voitures; i++)
-    {
-        if (CollisionEntreObjets(&animal->objet , &(voiture+i)->objet)){
-            // Collision détectée !
-            animal->vie--;
-            reinitialiserPositionAnimal(animal);
-            // Si le nombre de vies de l'animal est 0, mettre à jour le GameState à LOSE
-            if (animal->vie <= 0) {
-                gameState = LOSE;
+    if (CollisionEntreObjets(&animal->objet, &route->objet)){
+        ptrElement element = pliste_autos->premier;
+        while(element != NULL)
+        {
+            if (CollisionEntreObjets(&animal->objet , (ptrObjet)element->objetDefini)){
+                // Collision détectée !
+                return true;
             }
+            element = element->suivant;
         }
     }
-    // // Vérifier si la grenouille est sur un rondin
-    // else {
-    //     bool surRondin = false;
-    //     for (int i = 0; i < NOMBRE_RONDINS; i++) {
-    //         if (positionGrenouilleX + LARGEUR_GREN > positionRondinsX[i] &&
-    //             positionGrenouilleX < positionRondinsX[i] + LARGEUR_RONDIN &&
-    //             positionGrenouilleY + HAUTEUR_GREN > positionRondinsY[i] &&
-    //             positionGrenouilleY < positionRondinsY[i] + HAUTEUR_RONDIN) {
-    //             // La grenouille est sur un rondin, elle se déplace avec le rondin
-    //             positionGrenouilleX += vitesseRondins[i];
-    //             surRondin = true;
-    //             break;
-    //         }
-    //     }
-    //     if (!surRondin) {
-    //         // La grenouille n'est sur aucun rondin, elle tombe dans l'eau
-    //         vieGrenouille--;
-    //         initialiserGrenouille();
-    //     }
-    // }
+    return false;
 }
 
 void verifierEntreeTaniere(ptrAnimal animal, ptrTaniere taniere) {
@@ -328,23 +325,71 @@ void verifierEntreeTaniere(ptrAnimal animal, ptrTaniere taniere) {
     }
 }
 
+bool verifierTomberdanseau(ptrAnimal animal, ptrRuisseau ruisseau, Rondin rondin[]) {
+    if (CollisionEntreObjets(&animal->objet, &ruisseau->objet)){  // Si je suis sur le ruisseau alors je commence à vérifier 
+        for(int i=0;i<NB_RONDIN_MAX;i++){                               // Je parcours tous les
+            if (CollisionEntreObjets(&animal->objet, &(rondin + i)->objet)) { // Si je  suis  sur un rondin                                              // Tout va bien
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
 
 void timer(int valeur) {
-    for (int i = 0; i< (int) (sizeof(TableVoitures)/sizeof(Voiture)); i++)
-    {
-        deplacerVoiture(&(TableVoitures[i]), 0);
-    }
-    // deplacerRondins();
-    // verifierCollision();
-    verifierCollision(&ObjetAnimal, TableVoitures, sizeof(TableVoitures)/sizeof(Voiture));
-    // Vérification entrée taniere
-    verifierEntreeTaniere(&ObjetAnimal, &ObjetTaniere);
+        switch(gameState) {
+        case INIT:
+            initialiserAnimal(&ObjetAnimal);
+            strcpy(nomJoueur,"");
+            gameState = TITLE;
+            break;
+        case PLAYING:
+            ptrElement element = liste_autos.premier;
+            while(element != NULL)
+            {
+                deplacerVoiture((ptrVoiture)element->objetDefini, 0);
+                element = element->suivant;
+            }
+            // deplacerRondins();
+            for (int i = 0; i< (int) (sizeof(TableRondin)/sizeof(Rondin)); i++)
+            {
+                deplacerRondin(&(TableRondin[i]), 0);
+            }
+            int index = 0;
+            if (animalSurRondin(&ObjetAnimal,TableRondin, (sizeof(TableRondin)/sizeof(Rondin)), &index))
+                deplacerAnimalAvecRondin(&ObjetAnimal,&TableRondin[index]);
+            // verifierCollision();
+            if (verifierCollisionVoiture(&ObjetAnimal, &ObjetRoute, &liste_autos))
+            {
+                ObjetAnimal.vie--;
+                reinitialiserPositionAnimal(&ObjetAnimal);
+            }
+            // Vérification entrée taniere
+            verifierEntreeTaniere(&ObjetAnimal, &ObjetTaniere);
+            //Vérification tombé dans l'eau ?    
+            if (verifierTomberdanseau(&ObjetAnimal, &ObjetRuisseau, TableRondin))
+            {
+                ObjetAnimal.vie--;
+                reinitialiserPositionAnimal(&ObjetAnimal);
+            }
+            
 
-    // if (positionGrenouilleY >= HAUTEUR_ROUTE + HAUTEUR_GREN && vieGrenouille > 0) {
-    //     // La grenouille est sur le ruisseau et n'est pas morte, on ajoute un point
-    // scoreGrenouille++;
-    if (ObjetAnimal.vie <= 0)
-    {
+            // if (positionGrenouilleY >= HAUTEUR_ROUTE + HAUTEUR_GREN && vieGrenouille > 0) {
+            //     // La grenouille est sur le ruisseau et n'est pas morte, on ajoute un point
+            // scoreGrenouille++;
+            if (ObjetAnimal.vie <= 0)
+            {
+                gameState = LOSE;
+            }
+            break;
+            case WIN:
+            case LOSE:
+            case TITLE:
+            case LEADERBOARD:
+            case COMMANDS:
+            default:
+            break;
     }
 
     /// La fonction glutPostRedisplay() est utilisée pour indiquer à GLUT qu'une nouvelle image doit être dessinée. Elle demande essentiellement à GLUT de rappeler la fonction de rappel de rendu (définie à l'aide de glutDisplayFunc()) dès que possible. Cela est souvent utilisé pour créer des animations ou pour rafraîchir l'affichage lorsque quelque chose a changé dans la scène.
@@ -379,41 +424,29 @@ void initRendering() {
 //Called when a key is pressed
 void handleKeypress(unsigned char key, //The key that was pressed
                     int x, int y) {    //The current mouse coordinates
-    if (gameState == TITLE && key == 13){ // La touche Entrée a le code ASCII 13
-        gameState = PLAYING;
-        }               
-    switch (key) {
-        case 27: //Escape key
-            exit(0); //Exit the program
-        case 'z':
-        case 's':
-        case 'q':
-        case 'd':
-            clavier(key, &ObjetAnimal);
-            verifierCollision(&ObjetAnimal, TableVoitures, sizeof(TableVoitures)/sizeof(Voiture));
+    if (key == 27) //Escape key
+        exit(0); //Exit the program
+    switch (gameState) {
+        case TITLE: 
+            if (key == 13) {
+                gameState = PLAYING;
+            }
+            break;
+        case PLAYING:
+            entrée_clavier_animal(key, &ObjetAnimal);
+            break;
+        case LOSE:
+            gererSaisieNom(key, 0, 0);
+            break;
+        case WIN:
+            break;
+        default: 
+            exit(0);
             break;
     }
 }
 
-/*
-PRE: button est un entier représentant le bouton de la souris concerné (dans ce cas, GLUT_LEFT_BUTTON).
-state est un entier représentant l'état du bouton de la souris (dans ce cas, GLUT_DOWN).
-x est un entier représentant la position horizontale du curseur de la souris au moment du clic.
-y est un entier représentant la position verticale du curseur de la souris au moment du clic.
-POST: Si le bouton de la souris gauche a été cliqué (GLUT_LEFT_BUTTON et GLUT_DOWN) et que l'état du jeu est LOSE, la fonction vérifie si le bouton "Rejouer" a été cliqué en utilisant boutonRejouerClique(x, y).
-Si le bouton "Rejouer" a été cliqué, le jeu est réinitialisé en appelant initialiser(), et l'état du jeu passe à PLAYING.
- */
-void gererClicSouris(int button, int state, int x, int y) {
-    // Inverser l'axe des ordonnées
-    //y = HAUTEUR_FENETRE - y;
-    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
-        if (gameState == LOSE && boutonRejouerClique(x, y)) {
-            // Réinitialisez le jeu et changez l'état du jeu en PLAYING
-            initialiser();
-            gameState = PLAYING;
-        }
-    }
-}
+
 
 
 //Called when the window is resized
@@ -432,4 +465,29 @@ void handleResize(int w, int h) {
     //                (double)w / (double)h, //The width-to-height ratio
     //                1.0,                   //The near z clipping coordinate
     //                200.0);                //The far z clipping coordinate
+}
+
+//Pointeurs vers les boutons dans ecran.c
+extern ptrBouton boutonQuitter;
+extern ptrBouton boutonLeaderboard;
+extern ptrBouton boutonCommandes;
+extern ptrBouton boutonJouer;
+
+void mouseClick(int button, int state, int x, int y) {
+    // Vérifiez si le bouton gauche de la souris a été cliqué
+    if (button == GLUT_LEFT_BUTTON && state == GLUT_DOWN) {
+        if (clicSurBouton(x, y, *boutonQuitter)) {
+            // Quitter le jeu
+            exit(0);
+        } else if (clicSurBouton(x, y, *boutonLeaderboard)) {
+            // Changer l'état du jeu pour afficher le leaderboard
+            gameState = LEADERBOARD; // Supposons que vous avez un état LEADERBOARD
+        } else if (clicSurBouton(x, y, *boutonCommandes)) {
+            // Changer l'état du jeu pour afficher les commandes
+            gameState = COMMANDS; // Supposons que vous avez un état COMMANDS
+        } else if (clicSurBouton(x, y, *boutonJouer)) {
+            // Changer l'état du jeu pour jouer
+            gameState = PLAYING; // Supposons que vous avez un état PLAYING
+        }
+    }
 }

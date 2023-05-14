@@ -1,6 +1,8 @@
 #pragma once
 
 #include "objet.h"
+#include "rondin.h"
+#include "tir.h"
 
 #define ANIMAL_POSITION_X    380
 #define ANIMAL_POSITION_Y    560
@@ -15,14 +17,8 @@
 
 #define ANIME_NB_VIES    3;
 
-// Directions de déplacement
-// enum Direction {
-//     UP, DOWN, LEFT, RIGHT
-// };
-
 typedef struct {
     Objet objet;
-    //enum Direction direction;
     int vie;
     int score;
 } Animal, *ptrAnimal;
@@ -30,4 +26,7 @@ typedef struct {
 void initialiserAnimal(ptrAnimal animal);
 void dessinerAnimal(ptrAnimal animal);
 void deplacerAnimal(ptrAnimal animal, int x, int y);
+void entrée_clavier_animal(unsigned char touche, ptrAnimal animal);
 void reinitialiserPositionAnimal(ptrAnimal animal);
+bool animalSurRondin(ptrAnimal animal, Rondin rondins[], int nbRondins, int *index);
+void deplacerAnimalAvecRondin(ptrAnimal animal, ptrRondin rondin);
